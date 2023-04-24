@@ -78,7 +78,7 @@ func (d *DAG) link(p pointer, res Resolver) error {
 	for len(toLink) > 0 {
 		p := toLink[0]
 		toLink = toLink[1:]
-		r, linked := d.refs[p]
+		_, linked := d.refs[p]
 		if linked {
 			d.refs[p] += 1
 			continue
@@ -114,7 +114,7 @@ func (d *DAG) unlink(p pointer) error {
 		if !ok {
 			return fmt.Errorf("internal DAG error, pointer %s reference counted but node not tracked")
 		}
-		toUnlink = append(toUnlink, d.nodes[p].Children()...)
+		toUnlink = append(toUnlink, n.Children()...)
 		delete(d.nodes, p)
 	}
 	return nil
@@ -127,13 +127,13 @@ type LogDAG struct {
 
 }
 
-func (ld *LogDag) apply(p pointer, res Resolver) error {
+func (ld *LogDAG) apply(p pointer, res Resolver) error {
 	// add to rootSet, link
-	ld.rootSet[p] = struct{}
+	ld.rootSet[p] = struct{}{}
 	return ld.dag.link(p, res)
 }
 
-func (ld *LogDag) revert(p pointer, res Resolver) error {
+func (ld *LogDAG) revert(p pointer, res Resolver) error {
 	// verify in rootSet, unlink
 	if _, ok := ld.rootSet[p]; !ok {
 		return fmt.Errorf("attempt to revert unpinned subDAG at root %s", p)
