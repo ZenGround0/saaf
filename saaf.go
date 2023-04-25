@@ -5,19 +5,27 @@ import (
 )
 
 // saaf implements indirect reference counting GC on immutible DAGS
+// DAG functions allow linking and unlinking new subDAGs and access to the collection of linked nodes.
 // DAG nodes implement a simple interface using native strings as pointers and returning child pointers
 // Link and unlink operations scale in node loads as O(n + L) where n is the total number of new nodes being added/removed
-// from the DAG, and L is the number of transitive links into connected components separately linked 
+// from the DAG, and L is the number of links from the linked connected component into the existing DAG
 
-type pointer string 
+type Pointer string 
 
 type Node interface {
-	Pointer() pointer 
-	Children() []pointer 
+	//	Pointer() Pointer 
+	Children() []Pointer 
 }
 
 type Resolver interface {
-	Resolve(pointer) (Node, error)
+	Resolve(Pointer) (Node, error)
+}
+
+type NodeStore interface {
+	Put(Pointer, Node) error
+	Get(Pointer) (Node, error)
+	Delete(Pointer) error
+	All() <-chan Node
 }
 
 // refs tracks reference count of pointers
@@ -39,8 +47,6 @@ type Resolver interface {
    Delete B
    
    Delete R
-
-
 
    choice: dangling delete or no?  if no only delete when ref == 1, if yes delete any
    in both cases delete cnt 1 and traverse all children deleting all that are 0 decrementing all that are 1 recursively
@@ -69,12 +75,22 @@ type Resolver interface {
 */
 
 type DAG struct {
-	refs map[pointer]uint64
-	nodes map[pointer]Node 
+	// Invariant: alls nodes are tracked in both refs and nodes or neither
+	// refs tracks linked references to node at given pointer
+	refs map[Pointer]uint64
+	// nodes stores all nodes in the DAG
+	nodes NodeStore
 }
 
-func (d *DAG) link(p pointer, res Resolver) error {
-	toLink := []pointer{p}
+func NewDAG(s NodeStore) *DAG {
+	return &DAG{
+		refs: make(map[Pointer]uint64),
+		nodes: s,
+	}
+}
+
+func (d *DAG) Link(p Pointer, res Resolver) error {
+	toLink := []Pointer{p}
 	for len(toLink) > 0 {
 		p := toLink[0]
 		toLink = toLink[1:]
@@ -89,20 +105,22 @@ func (d *DAG) link(p pointer, res Resolver) error {
 		if err != nil {
 			return err
 		}
-		d.nodes[p] = n
+		if err := d.nodes.Put(p, n); err != nil {
+			fmt.Errorf("failed to put to node store: %w", err)
+		}
 		toLink = append(toLink, n.Children()...)
 	}
 	return nil
 }
 
-func (d *DAG) unlink(p pointer) error {
-	toUnlink := []pointer{p}
+func (d *DAG) Unlink(p Pointer) error {
+	toUnlink := []Pointer{p}
 	for len(toUnlink) > 0 {
 		p := toUnlink[0]
 		toUnlink = toUnlink[1:]
 		r, linked := d.refs[p]
 		if !linked {
-			return fmt.Errorf("failed to delete pointer %s, node not linked in DAG \n", )
+			return fmt.Errorf("failed to delete pointer %s, node not linked in DAG \n", p)
 		}
 		if r > 1 {
 			d.refs[p] -= 1
@@ -110,33 +128,84 @@ func (d *DAG) unlink(p pointer) error {
 		}
 		// if this is the last reference delete the sub DAG
 		delete(d.refs, p)
-		n, ok := d.nodes[p]
-		if !ok {
-			return fmt.Errorf("internal DAG error, pointer %s reference counted but node not tracked")
+		n, err := d.nodes.Get(p)
+		if err != nil {
+			return fmt.Errorf("internal DAG error, pointer %s reference counted but failed to get node: %w", p, err)
 		}
 		toUnlink = append(toUnlink, n.Children()...)
-		delete(d.nodes, p)
+		if err := d.nodes.Delete(p); err != nil {
+			return fmt.Errorf("internal DAG error, failed to delete node %s, %w", p, err)
+		}
 	}
 	return nil
 }
 
+func (d *DAG) Store() NodeStore {
+	return d.nodes
+}
+
 // Selectively pin a series of subDAGs in a DAG by their roots
 type LogDAG struct {
-	rootSet map[pointer]struct{}
+	rootSet map[Pointer]struct{}
 	dag DAG
 
 }
 
-func (ld *LogDAG) apply(p pointer, res Resolver) error {
+func (ld *LogDAG) apply(p Pointer, res Resolver) error {
 	// add to rootSet, link
 	ld.rootSet[p] = struct{}{}
-	return ld.dag.link(p, res)
+	return ld.dag.Link(p, res)
 }
 
-func (ld *LogDAG) revert(p pointer, res Resolver) error {
+func (ld *LogDAG) revert(p Pointer, res Resolver) error {
 	// verify in rootSet, unlink
 	if _, ok := ld.rootSet[p]; !ok {
 		return fmt.Errorf("attempt to revert unpinned subDAG at root %s", p)
 	}
-	return ld.dag.unlink(p)
+	return ld.dag.Unlink(p)
 }
+
+// In memory node store backed by a simple map
+type MapNodeStore struct {
+	nodes map[Pointer]Node
+}
+
+func NewMapNodeStore() MapNodeStore {
+	return MapNodeStore{
+		nodes: make(map[Pointer]Node),
+	}
+}
+
+func (s MapNodeStore) Put(p Pointer, n Node) error {
+	s.nodes[p] = n
+	return nil
+}
+
+func (s MapNodeStore) Get(p Pointer) (Node, error) {
+	n, ok := s.nodes[p]
+	if !ok {
+		return nil, fmt.Errorf("could not resolve pointer %s", p)
+	}
+	return n, nil
+}
+
+func (s MapNodeStore) All() <-chan Node {
+	ch := make(chan Node, 0)
+	go func() {
+		for p := range s.nodes {
+			ch <- s.nodes[p]
+		}
+		close(ch)
+	}()
+	return ch
+}
+
+func (s MapNodeStore) Delete(p Pointer) error {
+	if _, ok := s.nodes[p]; !ok {
+		return fmt.Errorf("%s not stored", p)
+	}
+	delete(s.nodes, p)
+	return nil
+}
+
+var _ NodeStore = MapNodeStore{}
