@@ -13,8 +13,9 @@ import (
 type Pointer string 
 
 type Node interface {
-	//	Pointer() Pointer 
-	Children() []Pointer 
+	Pointer() Pointer 
+	Children() []Pointer
+	
 }
 
 type Resolver interface {

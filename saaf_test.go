@@ -4,6 +4,7 @@ import (
 	"github.com/zenground0/saaf"
 	"testing"
 	"fmt"
+	"sort"
 )
 
 type testNode struct {
@@ -15,6 +16,10 @@ func (n *testNode) String() string {
 	return n.name
 }
 
+func (n *testNode) Pointer() saaf.Pointer {
+	return saaf.Pointer(fmt.Sprintf("<%s>", n.name))
+}
+
 func (n *testNode) LongString() string {
 	childrenString := "[]"
 	if len(n.children) > 0 {
@@ -24,7 +29,7 @@ func (n *testNode) LongString() string {
 		}
 	}
 	
-	return fmt.Sprintf("{%s, %s}", n.name, childrenString)
+	return fmt.Sprintf("{%s; %s}", n.name, childrenString)
 }
 
 func (n *testNode) Children() []saaf.Pointer {
@@ -34,7 +39,7 @@ func (n *testNode) Children() []saaf.Pointer {
 func newFromChildren(name string, children []*testNode) *testNode {
 	ptrs := make([]saaf.Pointer, len(children))
 	for i := range children {
-		ptrs[i] = saaf.Pointer(fmt.Sprintf("<%s>", children[i].String()))
+		ptrs[i] = children[i].Pointer()
 	}
 	return &testNode{
 		name: name,
@@ -75,6 +80,29 @@ func readAll(t *testing.T, ch <-chan saaf.Node) []saaf.Node {
 	return ns
 }
 
+func assertDAGNodes(t *testing.T, expected []saaf.Node, dag *saaf.DAG) {
+	observed := readAll(t, dag.Store().All())
+	if summary(observed) != summary(expected) {
+		t.Fatalf("expected dag %s but found %s", summary(expected), summary(observed))
+	}		
+}
+
+// return a comparable summary of a list of nodes by sorting
+// and concatenating pointer strings
+func summary(ns []saaf.Node) string {
+	strs := make([]string, len(ns))
+	for i, n := range ns {
+		strs[i] = string(n.Pointer())
+	}
+
+	sort.Strings(strs)
+	ret := ""
+	for _, s := range strs {
+		ret += "|" + s
+	}
+	return ret+"|"
+}
+
 
 func TestLinkUnlinkOneNode(t *testing.T) {
 	n := testNode {
@@ -105,7 +133,6 @@ func TestLinkUnlinkOneNode(t *testing.T) {
 	if len(nodes) != 0 {
 		t.Fatalf("expected 0 node in DAG found %d", len(nodes))
 	}	
-	
 }
 
 
@@ -123,29 +150,28 @@ func TestLinkUnlinkOneNode(t *testing.T) {
 
   return all nodes and resolver
 */
-func testingDAG() ([]*testNode, testResolver) {
+func testingDAG() ([]saaf.Node, testResolver) {
 	// children
-	n2 := newFromChildren("n2", nil)
-	n4 := newFromChildren("n4", nil)
-	n5 := newFromChildren("n5", nil)
-	n6 := newFromChildren("n6", nil)
+
+	n2 := saaf.Node(newFromChildren("n2", nil))
+	n4 := saaf.Node(newFromChildren("n4", nil))
+	n5 := saaf.Node(newFromChildren("n5", nil))
+	n6 := saaf.Node(newFromChildren("n6", nil))
 
 	// ancestors
-	n3 := newFromChildren("n3", []*testNode{n4, n5, n6}) 
-	n7 := newFromChildren("n7", []*testNode{n3})
-	n1 := newFromChildren("n1", []*testNode{n2, n3})
+	n3 := saaf.Node(newFromChildren("n3", []*testNode{n4.(*testNode), n5.(*testNode), n6.(*testNode)}))
+	n7 := saaf.Node(newFromChildren("n7", []*testNode{n3.(*testNode)}))
+	n1 := saaf.Node(newFromChildren("n1", []*testNode{n2.(*testNode), n3.(*testNode)}))
 
+	ns :=  []saaf.Node{n1, n2, n3, n4, n5, n6, n7}
+	
 	// add to resolver
 	r := testResolver{mapping: make(map[saaf.Pointer]saaf.Node)}
-	r.add(p("<n1>"), n1)
-	r.add(p("<n2>"), n2)
-	r.add(p("<n3>"), n3)
-	r.add(p("<n4>"), n4)
-	r.add(p("<n5>"), n5)
-	r.add(p("<n6>"), n6)
-	r.add(p("<n7>"), n7)
-
-	return []*testNode{n1, n2, n3, n4, n5, n6, n7}, r
+	for _, n := range ns {
+		r.add(n.Pointer(), n.(*testNode))
+	}
+	
+	return ns, r
 }
 
 
@@ -162,7 +188,20 @@ func testingDAG() ([]*testNode, testResolver) {
    empty
  */
 func TestLinkAddsDAG(t *testing.T) {
+	testNodes, r := testingDAG()
+	dag := saaf.NewDAG(saaf.NewMapNodeStore())
 
+	// Link A 
+	if err := dag.Link(p("<n1>"), r); err != nil {
+		t.Fatal("linking failed")
+	}
+	assertDAGNodes(t, testNodes[:6], dag)
+
+	// Unlink A
+	if err := dag.Unlink(p("<n1>")); err != nil {
+		t.Fatal("unlinking failed")
+	}
+	assertDAGNodes(t, nil, dag)
 }
 
 /* B ----> n7
@@ -182,5 +221,32 @@ func TestLinkAddsDAG(t *testing.T) {
    empty
  */
 func TestLinkSharedSubDAG(t *testing.T) {
+	testNodes, r := testingDAG()
+	dag := saaf.NewDAG(saaf.NewMapNodeStore())
+	A := p("<n1>")
+	B := p("<n7>")
 
+	// Link B
+	if err := dag.Link(B, r); err != nil {
+		t.Fatal("linking B failed")
+	}
+	assertDAGNodes(t, testNodes[2:], dag)
+
+	// Link A
+	if err := dag.Link(A, r); err != nil {
+		t.Fatal("linking A failed")
+	}
+	assertDAGNodes(t, testNodes, dag)
+
+	// Unlink A
+	if err := dag.Unlink(A); err != nil {
+		t.Fatal("unlinking A failed")
+	}
+	assertDAGNodes(t, testNodes[2:], dag)
+
+	// Unlink B
+	if err := dag.Unlink(B); err != nil {
+		t.Fatal("unlinking B failed")
+	}
+	assertDAGNodes(t, nil, dag)
 }
