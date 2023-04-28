@@ -166,12 +166,12 @@ func testingDAG() ([]saaf.Node, testSource) {
 	ns :=  []saaf.Node{n1, n2, n3, n4, n5, n6, n7}
 	
 	// add to resolver
-	r := testSource{mapping: make(map[saaf.Pointer]saaf.Node)}
+	src := testSource{mapping: make(map[saaf.Pointer]saaf.Node)}
 	for _, n := range ns {
-		r.add(n.Pointer(), n.(*testNode))
+		src.add(n.Pointer(), n.(*testNode))
 	}
 	
-	return ns, r
+	return ns, src
 }
 
 
@@ -188,11 +188,11 @@ func testingDAG() ([]saaf.Node, testSource) {
    empty
  */
 func TestLinkAddsDAG(t *testing.T) {
-	testNodes, r := testingDAG()
+	testNodes, src := testingDAG()
 	dag := saaf.NewDAG(saaf.NewMapNodeStore())
 
 	// Link A 
-	if err := dag.Link(p("<n1>"), r); err != nil {
+	if err := dag.Link(p("<n1>"), src); err != nil {
 		t.Fatal("linking failed")
 	}
 	assertDAGNodes(t, testNodes[:6], dag)
@@ -221,19 +221,19 @@ func TestLinkAddsDAG(t *testing.T) {
    empty
  */
 func TestLinkSharedSubDAG(t *testing.T) {
-	testNodes, r := testingDAG()
+	testNodes, src := testingDAG()
 	dag := saaf.NewDAG(saaf.NewMapNodeStore())
 	A := p("<n1>")
 	B := p("<n7>")
 
 	// Link B
-	if err := dag.Link(B, r); err != nil {
+	if err := dag.Link(B, src); err != nil {
 		t.Fatal("linking B failed")
 	}
 	assertDAGNodes(t, testNodes[2:], dag)
 
 	// Link A
-	if err := dag.Link(A, r); err != nil {
+	if err := dag.Link(A, src); err != nil {
 		t.Fatal("linking A failed")
 	}
 	assertDAGNodes(t, testNodes, dag)
@@ -268,34 +268,34 @@ func TestLinkSharedSubDAG(t *testing.T) {
 
 */
 func TestMultiLevelLinking(t *testing.T) {
-	testNodes, r := testingDAG()
+	testNodes, src := testingDAG()
 	dag := saaf.NewDAG(saaf.NewMapNodeStore())
 	A := p("<n1>")
 	C := p("<n3>")
 	D := p("<n6>")
 
 	// Link D three times
-	if err := dag.Link(D, r); err != nil {
+	if err := dag.Link(D, src); err != nil {
 		t.Fatal("linking D failed")
 	}
 	assertDAGNodes(t, []saaf.Node{testNodes[5]}, dag)
-	if err := dag.Link(D, r); err != nil {
+	if err := dag.Link(D, src); err != nil {
 		t.Fatal("linking D failed")
 	}
 	assertDAGNodes(t, []saaf.Node{testNodes[5]}, dag)
-	if err := dag.Link(D, r); err != nil {
+	if err := dag.Link(D, src); err != nil {
 		t.Fatal("linking D failed")
 	}
 	assertDAGNodes(t, []saaf.Node{testNodes[5]}, dag)
 
 	// Link A
-	if err := dag.Link(A, r); err != nil {
+	if err := dag.Link(A, src); err != nil {
 		t.Fatal("linking A failed")
 	}
 	assertDAGNodes(t, testNodes[:6], dag)
 
 	// Link C
-	if err := dag.Link(C, r); err != nil {
+	if err := dag.Link(C, src); err != nil {
 		t.Fatal("linking C failed")
 	}
 	assertDAGNodes(t, testNodes[:6], dag)	

@@ -5,7 +5,9 @@ import (
 )
 
 /*
-
+   saaf is a simple library implementing indirect reference counted GC on immutible DAGs
+   `DAG.Link` takes in nodes reachable from a root as resolved through a node `Source` and preserves them in a `NodeStore`
+   `DAG.Unlink` removes nodes from the NodeStore that are no longer linked by any root
 */
 
 // saaf implements indirect reference counting GC on immutible DAGS
@@ -94,7 +96,7 @@ func NewDAG(s NodeStore) *DAG {
 	}
 }
 
-func (d *DAG) Link(p Pointer, res Source) error {
+func (d *DAG) Link(p Pointer, src Source) error {
 	toLink := []Pointer{p}
 	for len(toLink) > 0 {
 		p := toLink[0]
@@ -106,7 +108,7 @@ func (d *DAG) Link(p Pointer, res Source) error {
 		}
 		// if not linked then link node and traverse children
 		d.refs[p] = 1
-		n, err := res.Resolve(p)
+		n, err := src.Resolve(p)
 		if err != nil {
 			return err
 		}
@@ -156,13 +158,13 @@ type LogDAG struct {
 
 }
 
-func (ld *LogDAG) apply(p Pointer, res Source) error {
+func (ld *LogDAG) apply(p Pointer, src Source) error {
 	// add to rootSet, link
 	ld.rootSet[p] = struct{}{}
-	return ld.dag.Link(p, res)
+	return ld.dag.Link(p, src)
 }
 
-func (ld *LogDAG) revert(p Pointer, res Source) error {
+func (ld *LogDAG) revert(p Pointer, src Source) error {
 	// verify in rootSet, unlink
 	if _, ok := ld.rootSet[p]; !ok {
 		return fmt.Errorf("attempt to revert unpinned subDAG at root %s", p)
