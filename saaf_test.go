@@ -250,3 +250,82 @@ func TestLinkSharedSubDAG(t *testing.T) {
 	}
 	assertDAGNodes(t, nil, dag)
 }
+
+/*         
+                n6 <---D
+   C--->-----\ /
+   A --> n1--n3--n5
+           \   \
+            n2  n4
+
+   Link D three times
+   |n6|
+   Link A
+   |n1-n6|
+   Link C
+   |n1-n6|
+   
+
+*/
+func TestMultiLevelLinking(t *testing.T) {
+	testNodes, r := testingDAG()
+	dag := saaf.NewDAG(saaf.NewMapNodeStore())
+	A := p("<n1>")
+	C := p("<n3>")
+	D := p("<n6>")
+
+	// Link D three times
+	if err := dag.Link(D, r); err != nil {
+		t.Fatal("linking D failed")
+	}
+	assertDAGNodes(t, []saaf.Node{testNodes[5]}, dag)
+	if err := dag.Link(D, r); err != nil {
+		t.Fatal("linking D failed")
+	}
+	assertDAGNodes(t, []saaf.Node{testNodes[5]}, dag)
+	if err := dag.Link(D, r); err != nil {
+		t.Fatal("linking D failed")
+	}
+	assertDAGNodes(t, []saaf.Node{testNodes[5]}, dag)
+
+	// Link A
+	if err := dag.Link(A, r); err != nil {
+		t.Fatal("linking A failed")
+	}
+	assertDAGNodes(t, testNodes[:6], dag)
+
+	// Link C
+	if err := dag.Link(C, r); err != nil {
+		t.Fatal("linking C failed")
+	}
+	assertDAGNodes(t, testNodes[:6], dag)	
+
+	// Unlink D twice
+	if err := dag.Unlink(D); err != nil {
+		t.Fatal("unlinking D failed")
+	}
+	if err := dag.Unlink(D); err != nil {
+		t.Fatal("unlinking D failed")
+	}
+	assertDAGNodes(t, testNodes[:6], dag)	
+
+	// Unlink D another time
+	if err := dag.Unlink(D); err != nil {
+		t.Fatal("unlinking D failed")
+	}
+	assertDAGNodes(t, testNodes[:6], dag)	
+
+	// Unlink A
+	if err := dag.Unlink(A); err != nil {
+		t.Fatal("unlinking A failed")
+	}
+	assertDAGNodes(t, testNodes[2:6], dag)	
+
+	// Unlink C
+	if err := dag.Unlink(C); err != nil {
+		t.Fatal("unlinking C failed")
+	}
+	assertDAGNodes(t, nil, dag)
+}
+
+
