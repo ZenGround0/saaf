@@ -47,15 +47,15 @@ func newFromChildren(name string, children []*testNode) *testNode {
 	}
 }
 
-type testResolver struct {
+type testSource struct {
 	mapping map[saaf.Pointer]saaf.Node
 }
 
-func (r testResolver) add(p saaf.Pointer, n saaf.Node) {
+func (r testSource) add(p saaf.Pointer, n saaf.Node) {
 	r.mapping[p] = n
 }
 
-func (r testResolver) Resolve(p saaf.Pointer) (saaf.Node, error) {
+func (r testSource) Resolve(p saaf.Pointer) (saaf.Node, error) {
 	n, ok := r.mapping[p]
 	if !ok {
 		return nil, fmt.Errorf("failed to resolve node at pointer %s", p)
@@ -65,7 +65,7 @@ func (r testResolver) Resolve(p saaf.Pointer) (saaf.Node, error) {
 
 
 
-var _ saaf.Resolver = (*testResolver)(nil)
+var _ saaf.Source = (*testSource)(nil)
 var _ saaf.Node = (*testNode)(nil)
 
 func p(s string) saaf.Pointer {
@@ -109,7 +109,7 @@ func TestLinkUnlinkOneNode(t *testing.T) {
 		name: "n",
 	}
 	nPtr := p("<n>")
-	r := testResolver{mapping: make(map[saaf.Pointer]saaf.Node)}
+	r := testSource{mapping: make(map[saaf.Pointer]saaf.Node)}
 	r.add(nPtr, &n)
 	dag := saaf.NewDAG(saaf.NewMapNodeStore())
 
@@ -150,7 +150,7 @@ func TestLinkUnlinkOneNode(t *testing.T) {
 
   return all nodes and resolver
 */
-func testingDAG() ([]saaf.Node, testResolver) {
+func testingDAG() ([]saaf.Node, testSource) {
 	// children
 
 	n2 := saaf.Node(newFromChildren("n2", nil))
@@ -166,7 +166,7 @@ func testingDAG() ([]saaf.Node, testResolver) {
 	ns :=  []saaf.Node{n1, n2, n3, n4, n5, n6, n7}
 	
 	// add to resolver
-	r := testResolver{mapping: make(map[saaf.Pointer]saaf.Node)}
+	r := testSource{mapping: make(map[saaf.Pointer]saaf.Node)}
 	for _, n := range ns {
 		r.add(n.Pointer(), n.(*testNode))
 	}

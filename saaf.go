@@ -4,6 +4,10 @@ import (
 	"fmt"
 )
 
+/*
+
+*/
+
 // saaf implements indirect reference counting GC on immutible DAGS
 // DAG functions allow linking and unlinking new subDAGs and access to the collection of linked nodes.
 // DAG nodes implement a simple interface using native strings as pointers and returning child pointers
@@ -18,7 +22,7 @@ type Node interface {
 	
 }
 
-type Resolver interface {
+type Source interface {
 	Resolve(Pointer) (Node, error)
 }
 
@@ -90,7 +94,7 @@ func NewDAG(s NodeStore) *DAG {
 	}
 }
 
-func (d *DAG) Link(p Pointer, res Resolver) error {
+func (d *DAG) Link(p Pointer, res Source) error {
 	toLink := []Pointer{p}
 	for len(toLink) > 0 {
 		p := toLink[0]
@@ -152,13 +156,13 @@ type LogDAG struct {
 
 }
 
-func (ld *LogDAG) apply(p Pointer, res Resolver) error {
+func (ld *LogDAG) apply(p Pointer, res Source) error {
 	// add to rootSet, link
 	ld.rootSet[p] = struct{}{}
 	return ld.dag.Link(p, res)
 }
 
-func (ld *LogDAG) revert(p Pointer, res Resolver) error {
+func (ld *LogDAG) revert(p Pointer, res Source) error {
 	// verify in rootSet, unlink
 	if _, ok := ld.rootSet[p]; !ok {
 		return fmt.Errorf("attempt to revert unpinned subDAG at root %s", p)
