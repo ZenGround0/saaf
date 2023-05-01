@@ -2,10 +2,9 @@
 Indirect reference counting for GC of immutable DAGs
 
 ## summary
- saaf is a simple library implementing indirect reference counted GC on immutible DAGs
+ saaf is a simple library implementing indirect reference counted GC on immutible DAGs.  Shared references are counted indirectly on ancestors rather than directly on each node.
  
- Shared references are counted indirectly on ancestors rather than directly on each node  
-`DAG` `Node`s implement a simple interface using native strings as pointers                                                                                                  
+ `DAG` `Node`s implement a simple interface using native strings as pointers                                                                                                  
 `DAG.Link` pins a node to the DAG, `DAG.Unlink` unpins it.                                                                                                                   
 Only linked nodes can be unlinked to disallow dangling references                                                                                                            
 `Link` takes in nodes reachable from a root as resolved through a node `Source` and preserves them in a `NodeStore`                                                          
